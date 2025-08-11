@@ -1,0 +1,13 @@
+
+# Installing Plugins:
+
+Only .dlls in the Assets/Plugins folder get loaded!
+First install the plugin using the NuGet package manager in Visual Studio.
+The required files will be in the [UnityProject]/Packages folder.
+Copy only the "netstandard2.1"/"netstandard2.0" (whichever one is available, if both just the newer one) version folders to the Assets/Plugins folder.
+Make sure to delete the "ref" folder as well!
+After that let the unity project rebuild.
+Then go to Edit->Preferences->External Tools and click "Regenerate Project Files".
+(This might not be available if the project has compiler errors - temporarily remove the files that cause the errors from the project to fix this!)
+And done! Now the assemblies should show up as references in Visual Studio as well.
+

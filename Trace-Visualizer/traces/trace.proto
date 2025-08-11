@@ -1,0 +1,142 @@
+syntax = "proto3";
+
+package celerity.trace;
+
+enum DependencyKind {
+	ANTI_DEP = 0;
+	ORDER_DEP = 1;
+	TRUE_DEP = 2;
+}
+
+// Dependency for tasks and commands
+message Dependency {
+	uint64 id = 1; // Either a task or command id
+	DependencyKind kind = 2;
+}
+
+// For simplicity we always store 3D boxes.
+// Coordinates are [min, max).
+// TODO: Need terminology consistent with runtime here (once we have it there...)
+message Box3D {
+	uint64 min0 = 1;
+	uint64 min1 = 2;
+	uint64 min2 = 3;
+	uint64 max0 = 4;
+	uint64 max1 = 5;
+	uint64 max2 = 6;
+}
+
+enum AccessMode {
+	READ = 0;
+	WRITE = 1;
+	READ_WRITE = 2;
+	DISCARD_WRITE = 3;
+	DISCARD_READ_WRITE = 4;
+	ATOMIC = 5;
+}
+
+message BufferAccess {
+	uint64 buffer_id = 1;
+	Box3D range = 2;
+	AccessMode mode = 3;
+}
+
+enum ExecutionTarget {
+	DEVICE = 0;
+	HOST = 1;
+	NONE = 2;
+}
+
+// TODO: Also store accessed buffer ranges.
+message Task {
+	uint64 id = 1;
+	ExecutionTarget target = 2;
+	// A name used for debugging. Corresponds to SYCL kernel name for DEVICE targets.
+	// TODO: Replace with more sophisticated kernel information at some point.
+	string name = 3;
+	// TODO: Align naming with runtime (once that's consistent...)
+	repeated Dependency predecessors = 4;
+}
+
+enum CommandType {
+	NOP = 0;
+	HORIZON = 1;
+	TASK = 2;
+	PUSH = 3;
+	AWAIT_PUSH = 4;
+	SHUTDOWN = 5;
+	SYNC = 6;
+}
+
+message Command {
+	uint64 id = 1;
+	uint64 node_id = 2;
+	CommandType type = 3;
+
+	// Only relevant for task commands
+	uint64 task_id = 4;
+	Box3D execution_range = 5; // Only relevant for task commands
+
+	// Only relevant for transfer commands
+	uint64 other_node_id = 6;
+
+	repeated BufferAccess buffer_accesses = 7;
+	// TODO: Align naming with runtime (once that's consistent...)
+	repeated Dependency predecessors = 8;
+}
+
+message PollingStats {
+	uint64 min = 1;
+	uint64 max = 2;
+	uint64 avg = 3;
+	uint64 num_samples = 4;
+}
+
+message Job {
+	uint64 command_id = 1;
+	// Times are relative to the per-node reference time point, in microseconds.
+	uint64 started_at = 2;
+	uint64 finished_at = 3;
+    PollingStats polling_stats = 4;
+}
+
+// Meta-information for the given trace run.
+// This should exist exactly once per node within a complete trace.
+message RunInfo {
+	// An absolute wall-clock time point, in microseconds since the UNIX epoch.
+	// All other time points FOR THIS NODE contained within the trace are
+	// relative to this time point.
+	// TODO: Include information about the accuracy of this
+	// (e.g. whether we know that this is NTP synchronized).
+	uint64 reference_time_point = 1;
+
+	string executable_name = 2;
+	repeated string executable_args = 3;
+
+	// TODO: There's lots of interesting stuff we could add here:
+	// - Machine name
+	// - Device(s), device properties, driver versions
+	// - Celerity version
+	// - Library versions
+	// - ...
+}
+
+// The single top-level entry point for any kind of tracing data.
+// Having everything contained within a single message type means we don't need
+// any kind of wire encoding and can write traces from all nodes in any order.
+message TracePayload {
+	// Protocol version for compatibility checks.
+	uint64 version = 1;
+	// Unique run ID, must be the same across all payloads.
+	string run_id = 2;
+
+	RunInfo run_info = 3;
+	repeated Job jobs = 4;
+	repeated Task tasks = 5;
+	repeated Command commands = 6;
+
+	uint64 source_node_id = 7;
+	// Indicates whether this payload will be the last one for this source node.
+	bool is_final_payload = 8;
+}
+
